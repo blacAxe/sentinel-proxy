@@ -1,0 +1,12 @@
+# Secrets & Certs
+*.pem
+*.key
+.env
+
+# Go Binaries
+sentinel.exe
+manager.exe
+
+# Node stuff (in case)
+node_modules/
+npm-debug.log
