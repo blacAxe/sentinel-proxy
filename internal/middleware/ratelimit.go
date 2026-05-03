@@ -6,7 +6,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/omar/sentinel-proxy/internal/events"
 	"github.com/omar/sentinel-proxy/internal/logger"
+	"github.com/omar/sentinel-proxy/internal/metrics"
 )
 
 type Client struct {
@@ -48,13 +50,25 @@ func RateLimiter(next http.Handler) http.Handler {
 		client.Requests = append(valid, now)
 
 		if len(client.Requests) > 10 {
-			logger.Log(logger.LogEntry{
-				IP:     ip,
-				Path:   r.URL.Path,
-				Query:  r.URL.RawQuery,
-				Action: "BLOCK",
-				Reason: "RATE_LIMIT",
-			})
+			requestID := r.Context().Value(RequestIDKey).(string)
+
+			event := events.SecurityEvent{
+				EventType:      "rate_limited",
+				RequestID:      requestID,
+				IP:             ip,
+				Path:           r.URL.Path,
+				Method:         r.Method,
+				Query:          r.URL.RawQuery,
+				AttackDetected: true,
+				AttackType:     "RATE_LIMIT",
+				Action:         "blocked",
+				Timestamp:      time.Now().Unix(),
+			}
+
+			logger.LogEvent(event)
+			events.SendEvent(event)
+			metrics.IncBlocked()
+			metrics.IncAttack("RATE_LIMIT")
 
 			http.Error(w, "Too many requests", http.StatusTooManyRequests)
 			return

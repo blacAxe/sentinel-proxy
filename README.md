@@ -115,3 +115,42 @@ SQLite is used for basic persistence and can be extended to other databases
 * proxy forwards allowed requests
 * db handles storage
 * static contains dashboard UI
+
+## Latest update
+
+This update moves Sentinel from simple logging to a structured event driven system.
+
+* every request now produces a structured event instead of plain text logs
+* each request includes a unique request id for tracing
+* events include request data detection results and action taken
+* events are used across logs metrics and dashboard
+
+## Event flow
+
+Sentinel now acts as a central event producer
+
+request comes in  
+request is inspected by waf and rate limiter  
+structured event is created  
+event is used for logging metrics and dashboard  
+
+This makes the system easier to extend into external services later.
+
+## Improvements in this update
+
+* added request id tracking across the system
+* fixed attack tracking so top attack updates correctly
+* integrated rate limiting into metrics and attack counts
+* improved consistency between logs dashboard and alerts
+* stabilized event handling and reduced errors
+
+## Current direction
+
+Sentinel is now structured to support future components such as
+
+* authentication and identity enforcement
+* external ingestion services
+* message brokers for event streaming
+* long term analytics storage
+
+The goal is to evolve this into a more complete security and observability platform.

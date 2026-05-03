@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -12,9 +13,7 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"encoding/json"
 
-	// "github.com/omar/sentinel-proxy/proxy"
 	"github.com/omar/sentinel-proxy/internal/db"
 	"github.com/omar/sentinel-proxy/internal/logger"
 	"github.com/omar/sentinel-proxy/internal/metrics"
@@ -148,7 +147,11 @@ func main() {
 		}
 
 		// Apply middleware to everything else
-		chain := middleware.Chain(middleware.RateLimiter, middleware.WAF)
+		chain := middleware.Chain(
+			middleware.RequestID,
+			middleware.RateLimiter,
+			middleware.WAF,
+		)
 		secured := chain(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			reverseProxy.ServeHTTP(w, r)
 		}))

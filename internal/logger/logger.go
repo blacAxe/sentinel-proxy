@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/omar/sentinel-proxy/internal/db"
+	"github.com/omar/sentinel-proxy/internal/events"
 )
 
 var LogChan chan string
@@ -67,4 +68,19 @@ func Log(entry LogEntry) {
     default:
     }
     
+}
+
+func LogEvent(event events.SecurityEvent) {
+    // write to file
+    data, _ := json.Marshal(event)
+    logFile.Write(append(data, '\n'))
+
+    // send JSON to dashboard
+    msgBytes, _ := json.Marshal(event)
+    msg := string(msgBytes)
+
+    select {
+    case LogChan <- msg:
+    default:
+    }
 }

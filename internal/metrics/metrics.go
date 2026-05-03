@@ -17,6 +17,7 @@ var attackCounts = make(map[string]int)
 var ipCounts = make(map[string]int)
 var requestTimeline = make(map[int64]int)
 
+
 // Struct for clean stats response
 type Stats struct {
 	Total   int `json:"total"`
@@ -59,13 +60,13 @@ func GetStats() Stats {
 
 // ===== Analytics =====
 
-func IncAttack(reason string) {
-	if reason == "" {
+func IncAttack(attackType string) {
+	if attackType == "" {
 		return
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	attackCounts[reason]++
+	attackCounts[attackType]++
 }
 
 func IncIP(ip string) {

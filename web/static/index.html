@@ -95,8 +95,8 @@
 
             const log = JSON.parse(data);
 
-            if (log.action === "BLOCK") {
-                newLog.innerText = `[BLOCK] ${log.reason} | IP: ${log.ip} | Query: ${log.query}`;
+            if (log.action === "blocked") {
+                newLog.innerText = `[BLOCK] ${log.attack_type} | IP: ${log.ip} | Query: ${log.query}`;
                 newLog.style.color = "red";
             } else {
                 newLog.innerText = `[ALLOW] | IP: ${log.ip} | Query: ${log.query}`;
