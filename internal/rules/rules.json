@@ -1,0 +1,7 @@
+[
+  { "name": "SQLi UNION", "pattern": "union" },
+  { "name": "SQLi Comment", "pattern": "--" },
+  { "name": "SQLi OR 1=1", "pattern": "or1=1" },
+  { "name": "XSS Script", "pattern": "script" },
+  { "name": "XSS Event", "pattern": "onerror" }
+]

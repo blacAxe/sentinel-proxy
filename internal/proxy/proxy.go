@@ -7,11 +7,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/omar/sentinel-proxy/logger"
-	"github.com/omar/sentinel-proxy/rules"
+	"github.com/omar/sentinel-proxy/internal/logger"
+	"github.com/omar/sentinel-proxy/internal/rules"
 )
 
-var requestCounts = make(map[string]int)
+type Client struct {
+	Requests []int64
+}
+
+var clients = make(map[string]*Client)
 
 func WAFMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -37,33 +41,44 @@ func WAFMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		requestCounts[ip]++
+		now := time.Now().Unix()
 
-		if requestCounts[ip] > 10 {
-			fmt.Printf("[BLOCKED] ip=%s reason=RATE_LIMIT\n", ip)
-			http.Error(w, "Too many requests", http.StatusTooManyRequests)
-			return
+		client, exists := clients[ip]
+		if !exists {
+			client = &Client{}
+			clients[ip] = client
+		}
+
+		// keep only last 10 seconds
+		var validRequests []int64
+		for _, t := range client.Requests {
+			if now-t < 10 {
+				validRequests = append(validRequests, t)
+			}
 		}
 
 		if blocked {
 			fmt.Printf("[BLOCKED] ip=%s rule=%s path=%s query=%s\n", ip, reason, r.URL.Path, query)
-			logger.Log("BLOCK: " + reason + " | " + query)
+			logger.Log(logger.LogEntry{
+				IP:     ip,
+				Path:   r.URL.Path,
+				Query:  query,
+				Action: "BLOCK",
+				Reason: reason,
+			})
 			http.Error(w, "Blocked by Sentinel", http.StatusForbidden)
 			return
 		}
 
 		fmt.Printf("[ALLOW] ip=%s path=%s query=%s\n", ip, r.URL.Path, query)
-		logger.Log("ALLOW: " + query)
+		logger.Log(logger.LogEntry{
+			IP:     ip,
+			Path:   r.URL.Path,
+			Query:  query,
+			Action: "ALLOW",
+			Reason: reason,
+		})
 
 		next.ServeHTTP(w, r)
 	})
-}
-
-func init() {
-	go func() {
-		for {
-			time.Sleep(10 * time.Second)
-			requestCounts = make(map[string]int)
-		}
-	}()
 }

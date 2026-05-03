@@ -1,12 +1,32 @@
-# Secrets & Certs
+# Secrets
+
+.env
 *.pem
 *.key
-.env
 
-# Go Binaries
-sentinel.exe
-manager.exe
+# Build outputs
 
-# Node stuff (in case)
+*.exe
+*.out
+*.bin
+
+# Go cache (optional but nice)
+
+*.test
+
+# Node (for target app / experiments)
+
 node_modules/
 npm-debug.log
+
+# Runtime data (IMPORTANT)
+
+data/
+logs.json
+sentinel.db
+
+# OS / editor noise
+
+.DS_Store
+Thumbs.db
+.vscode/

@@ -12,15 +12,20 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"github.com/omar/sentinel-proxy/proxy"
-)
+	"encoding/json"
 
-var logChan = make(chan string)
+	// "github.com/omar/sentinel-proxy/proxy"
+	"github.com/omar/sentinel-proxy/internal/db"
+	"github.com/omar/sentinel-proxy/internal/logger"
+	"github.com/omar/sentinel-proxy/internal/metrics"
+	"github.com/omar/sentinel-proxy/internal/middleware"
+	"github.com/omar/sentinel-proxy/internal/rules"
+)
 
 var (
 	reverseProxy *httputil.ReverseProxy
-	origin      *url.URL
-	targetMutex sync.Mutex
+	origin       *url.URL
+	targetMutex  sync.Mutex
 )
 
 func updateTargetHandler(w http.ResponseWriter, r *http.Request) {
@@ -58,7 +63,7 @@ func logToSentinel(msg string) {
 	fmt.Println(msg)
 	// This ensures that if the UI isn't open, the backend doesn't wait
 	select {
-	case logChan <- msg:
+	case logger.LogChan <- msg:
 	default:
 	}
 }
@@ -89,6 +94,16 @@ func startAndMonitorApp(appPath string) {
 }
 
 func main() {
+
+	os.MkdirAll("data", os.ModePerm)
+
+	logChan := make(chan string, 100)
+
+	logger.LogChan = logChan
+
+	logger.Init()
+	rules.LoadRules()
+	db.Init()
 	// Initialize the Global Proxy with a default target
 	defaultTarget := "https://self-healing-security-lab.onrender.com"
 	var err error
@@ -121,51 +136,68 @@ func main() {
 		r.Header.Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	}
 
-	// This tells Go to serve index.html from the /static folder
-	fs := http.FileServer(http.Dir("./static"))
-	http.Handle("/dashboard/", http.StripPrefix("/dashboard/", fs))
+	// ===== MIDDLEWARE CHAIN =====
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
-	http.HandleFunc("/update-target", updateTargetHandler)
-
-	// Main request handler
-	// This handler will catch EVERYTHING that isn't /dashboard or /logs
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/" {
-			w.Header().Set("Cache-Control", "no-cache")
-			http.Redirect(w, r, "/proxy/", http.StatusTemporaryRedirect)
+		// Allow dashboard + internal routes WITHOUT middleware
+		if strings.HasPrefix(r.URL.Path, "/dashboard") ||
+			strings.HasPrefix(r.URL.Path, "/logs") ||
+			strings.HasPrefix(r.URL.Path, "/stats") {
+			http.DefaultServeMux.ServeHTTP(w, r)
 			return
 		}
 
-		// Path fix
-		if strings.HasPrefix(r.URL.Path, "/proxy/") {
-			r.URL.Path = strings.TrimPrefix(r.URL.Path, "/proxy")
-		}
+		// Apply middleware to everything else
+		chain := middleware.Chain(middleware.RateLimiter, middleware.WAF)
+		secured := chain(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			reverseProxy.ServeHTTP(w, r)
+		}))
 
-		if strings.Contains(r.URL.Path, ".well-known") ||
-			strings.Contains(r.URL.Path, "favicon.ico") {
-				reverseProxy.ServeHTTP(w, r)
-				return
-			}
-
-		// Forward request
-		reverseProxy.ServeHTTP(w, r)
+		secured.ServeHTTP(w, r)
 	})
 
+	// ===== ROUTES =====
+
+	// Dashboard UI
+	http.Handle("/dashboard/", http.StripPrefix("/dashboard/", http.FileServer(http.Dir("./web/static"))))
+
+	// Logs (SSE)
 	http.HandleFunc("/logs", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
 
-		for msg := range logChan {
+		for msg := range logger.LogChan {
 			fmt.Fprintf(w, "data: %s\n\n", msg)
 			w.(http.Flusher).Flush()
 		}
 	})
 
+	// Metrics
+	http.HandleFunc("/stats", func(w http.ResponseWriter, r *http.Request) {
+		stats := metrics.GetStats()
+		timeline := metrics.GetTimeline()
+
+		topAttack, attackCount := metrics.GetTopAttack()
+		topIP, ipCount := metrics.GetTopIP()
+
+		response := map[string]interface{}{
+			"total":        stats.Total,
+			"allowed":      stats.Allowed,
+			"blocked":      stats.Blocked,
+			"top_attack":   topAttack,
+			"attack_count": attackCount,
+			"top_ip":       topIP,
+			"ip_count":     ipCount,
+			"timeline":     timeline,
+		}
+
+		json.NewEncoder(w).Encode(response)
+	})
+
+	// Start server
 	logToSentinel("Sentinel Proxy is shielding: " + defaultTarget)
 	logToSentinel("Local access: http://localhost:8080")
 
-	// Start server
-	handler := proxy.WAFMiddleware(http.DefaultServeMux)
 	log.Fatal(http.ListenAndServe(":8080", handler))
 }
