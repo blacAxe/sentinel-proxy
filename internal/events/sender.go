@@ -7,7 +7,20 @@ import (
 )
 
 func SendEvent(event SecurityEvent) {
-	jsonData, _ := json.Marshal(event)
+
+    // Create a map to add extra context for LumenLog
+    eventMap := make(map[string]interface{})
+    
+    eventMap["request_id"] = event.RequestID
+    eventMap["ip"] = event.IP
+    eventMap["path"] = event.Path
+    eventMap["action"] = event.Action
+    eventMap["attack_type"] = event.AttackType
+    
+    // Add placeholder for user 
+    eventMap["user_id"] = "anonymous" 
+
+    jsonData, _ := json.Marshal(eventMap)
 
 	resp, err := http.Post(
 		"http://localhost:9001/events",

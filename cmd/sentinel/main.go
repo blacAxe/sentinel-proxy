@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/omar/sentinel-proxy/internal/db"
 	"github.com/omar/sentinel-proxy/internal/logger"
 	"github.com/omar/sentinel-proxy/internal/metrics"
@@ -36,7 +37,7 @@ func updateTargetHandler(w http.ResponseWriter, r *http.Request) {
 
 	parsedURL, err := url.Parse(newURL)
 	if err != nil {
-		logToSentinel("[ERROR] Invalid URL provided")
+		logToSentinel("[ERROR] Invalid URL provided", "", "", "")
 		return
 	}
 
@@ -53,16 +54,24 @@ func updateTargetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	targetMutex.Unlock()
 
-	logToSentinel("Now Shielding: " + newURL)
+	logToSentinel("Now Shielding: " + newURL, "", "", "")
 	w.WriteHeader(http.StatusOK)
 }
 
 // Helper to send log to both terminal and UI
-func logToSentinel(msg string) {
-	fmt.Println(msg)
-	// This ensures that if the UI isn't open, the backend doesn't wait
+func logToSentinel(action string, attack string, ip string, query string) {
+	msgObj := map[string]string{
+		"action":      action,
+		"attack_type": attack,
+		"ip":          ip,
+		"query":       query,
+	}
+	msgJSON, _ := json.Marshal(msgObj)
+	
+	fmt.Println(string(msgJSON)) // Log to terminal
+	
 	select {
-	case logger.LogChan <- msg:
+	case logger.LogChan <- string(msgJSON):
 	default:
 	}
 }
@@ -135,27 +144,43 @@ func main() {
 		r.Header.Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	}
 
+	var JwtKey = []byte("your_ultra_secret_key_123")
+
 	// ===== MIDDLEWARE CHAIN =====
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
-		// Allow dashboard + internal routes WITHOUT middleware
-		if strings.HasPrefix(r.URL.Path, "/dashboard") ||
-			strings.HasPrefix(r.URL.Path, "/logs") ||
-			strings.HasPrefix(r.URL.Path, "/stats") {
+    
+		if strings.HasPrefix(r.URL.Path, "/dashboard") || 
+		strings.HasPrefix(r.URL.Path, "/logs") || 
+		strings.HasPrefix(r.URL.Path, "/stats") {
 			http.DefaultServeMux.ServeHTTP(w, r)
 			return
 		}
 
-		// Apply middleware to everything else
-		chain := middleware.Chain(
-			middleware.RequestID,
-			middleware.RateLimiter,
-			middleware.WAF,
-		)
+		// PROTECTED ROUTES (Requires Passkey/JWT)
+		if strings.HasPrefix(r.URL.Path, "/api/secret-data") {
+			authHeader := r.Header.Get("Authorization")
+			
+			tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+
+			// Perform the check
+			token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+				return JwtKey, nil
+			})
+
+			if err != nil || !token.Valid {
+				logToSentinel("auth_error", "Invalid or Missing Token", r.RemoteAddr, r.URL.Path) 
+				http.Error(w, "Zero Trust: Valid Passkey Token Required", http.StatusUnauthorized)
+				return
+			}
+
+			logToSentinel("auth_success", "Access granted to secure route", r.RemoteAddr, r.URL.Path) 
+		}
+
+		// STANDARD WAF CHAIN
+		chain := middleware.Chain(middleware.RequestID, middleware.RateLimiter, middleware.WAF)
 		secured := chain(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			reverseProxy.ServeHTTP(w, r)
 		}))
-
 		secured.ServeHTTP(w, r)
 	})
 
@@ -199,8 +224,8 @@ func main() {
 	})
 
 	// Start server
-	logToSentinel("Sentinel Proxy is shielding: " + defaultTarget)
-	logToSentinel("Local access: http://localhost:8080")
+	logToSentinel("system", "Sentinel Proxy is shielding: "+defaultTarget, "", "")
+	logToSentinel("system", "Local access: http://localhost:8081", "", "") 
 
-	log.Fatal(http.ListenAndServe(":8080", handler))
+	log.Fatal(http.ListenAndServe(":8081", handler))
 }

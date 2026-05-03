@@ -8,70 +8,56 @@ It sits between the user and the backend and filters requests before they reach 
 
 ## **Architecture**
 
-* **Sentinel Proxy** in Go handles incoming traffic
-* **Rule engine** inspects requests for malicious patterns
-* **LumenLog Bridge** exports security events to external pipelines
-* **Target App** is a Node application running locally or on Render
+* **Sentinel Proxy** in Go handles incoming traffic[cite: 8]
+* **Rule engine** inspects requests for malicious patterns[cite: 8]
+* **Zero Trust Middleware:** Validates JWT "Passkeys" from an Identity Provider (IdP)[cite: 8]
+* **LumenLog Bridge** exports security events to external pipelines[cite: 8]
+* **Target App** is a Node application running locally or on Render[cite: 8]
 
 ## **Core Features**
 
-* **Reverse proxy** built with native Go HTTP tools
-* **Rule based detection** for SQL injection and XSS patterns
-* **Rate limiting** per IP to prevent abuse
-* **Real time request logging** in terminal and dashboard
-* **Self healing** process monitor for local apps
+* **Reverse proxy** built with native Go HTTP tools[cite: 8]
+* **Identity-Aware Protection:** Restricts sensitive routes (e.g., `/api/secret-data`) to authorized JWT holders only[cite: 8].
+* **Rule based detection** for SQL injection and XSS patterns[cite: 8]
+* **Rate limiting** per IP to prevent abuse[cite: 8]
+* **JSON-Powered Dashboard:** Real-time metrics and logs streamed via SSE in structured JSON format[cite: 8].
+* **Self healing** process monitor for local apps[cite: 8]
 
-## **Latest Update: Unified Security Pipeline**
+## **Latest Update: Zero Trust & Identity Integration**
 
-This update moves Sentinel from a standalone proxy to a core producer in a distributed observability platform.
+Sentinel has evolved from a simple WAF to an Identity-Aware Proxy (IAP)[cite: 8].
 
-* **LumenLog Integration:** Added a dedicated event sender to bridge logs to the LumenLog Ingestor
-* **Structured Event Export:** Every block or allow event is now serialized and shipped via HTTP to a central collector
-* **Distributed Tracing:** Every request produces a unique Request ID that persists from the WAF to the database
-* **Real-time Alerting:** Integrated with external services to trigger instant security notifications
+* **IdP Integration:** Implemented JWT verification logic using secure signing keys to protect high-value API endpoints[cite: 8].
+* **Enhanced JSON Logging:** Refactored the internal logger to produce structured JSON, enabling the dashboard to parse and display attack data dynamically[cite: 8].
+* **LumenLog Bridge:** Every block or allow event is now serialized and shipped via HTTP to a central collector[cite: 8].
 
 ## **Event Flow**
 
 Sentinel now acts as a central event producer for the entire security stack:
 
-1. Request comes in  
-2. Request is inspected by WAF and rate limiter
-3. Structured event is created with unique ID
-4. Event is used for local dashboard and SQLite storage
-5. **Event is bridged to LumenLog Ingestor (Redpanda + ClickHouse)**
+1. Request comes in[cite: 8] 
+2. **Identity Check:** Middleware verifies JWT if the route is protected[cite: 8]
+3. Request is inspected by WAF and rate limiter[cite: 8]
+4. Structured event is created with unique ID[cite: 8]
+5. **Event is bridged to LumenLog Ingestor (Redpanda + ClickHouse)**[cite: 8]
 
 ## **Example Output**
 
-ALLOW ip equals local path slash proxy query empty
+ALLOW | IP: ::1 | Query: /dashboard[cite: 8]
 
-BLOCKED ip equals local rule SQLi UNION path slash proxy query id equals one union test
+BLOCKED | SQLi UNION | IP: ::1 | Query: ?id=1 union select[cite: 8]
 
-**[BRIDGE] Sentinel Event Pushed to LumenLog**
-
-## **Dashboard**
-
-The dashboard shows a live view of what the proxy is doing:
-
-* total requests
-* allowed vs blocked traffic
-* block rate percentage
-* top attack pattern
-* top IP sending requests
-* live request log stream
+**[AUTH SUCCESS] Access granted to secure route**[cite: 8]
 
 ## **How to Run**
 
-1. go mod tidy  
-2. go run main.go  
-3. open http localhost 8080
+1. `go mod tidy`[cite: 8]
+2. `go run cmd/sentinel/main.go`[cite: 8]
+3. Open `http://localhost:8081/dashboard/`[cite: 8]
 
 ## **Tech Stack**
 
-* **Go** (Net/HTTP, Reverse Proxy)
-* **SQLite** (Local Persistence)
-* **Protobuf/JSON** (Event Serialization)
-* **LumenLog Bridge** (External Ingestion)
-
-## **Notes**
-
-This project demonstrates the transition from a simple local WAF to a distributed security engineering platform. By bridging events to external brokers like Redpanda, Sentinel now supports long-term analytics and professional security operations.
+* **Go** (Net/HTTP, Reverse Proxy)[cite: 8]
+* **JWT-Go** (Token Verification)[cite: 8]
+* **SQLite** (Local Persistence)[cite: 8]
+* **Protobuf/JSON** (Event Serialization)[cite: 8]
