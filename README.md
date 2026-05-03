@@ -5,6 +5,9 @@ It sits between the user and the backend and filters requests before they reach 
 
 This update improves logging, adds rule based detection, and introduces rate limiting.
 
+## Category
+Security Engineering
+
 ## Architecture
 
 * Sentinel Proxy in Go handles incoming traffic
