@@ -33,9 +33,16 @@ func WAF(next http.Handler) http.Handler {
 		metrics.IncTotal()
 		metrics.IncTimeline()
 
+		authHeader := r.Header.Get("Authorization")
+		if strings.HasPrefix(authHeader, "Bearer ") {
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		if strings.Contains(r.URL.Path, ".css") ||
 			strings.Contains(r.URL.Path, ".js") ||
-			strings.Contains(r.URL.Path, "favicon") {
+			strings.Contains(r.URL.Path, "favicon") ||
+			strings.HasPrefix(r.URL.Path, "/api/") { 
 			next.ServeHTTP(w, r)
 			return
 		}

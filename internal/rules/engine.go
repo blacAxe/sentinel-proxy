@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 )
 
@@ -59,7 +60,12 @@ func EvaluateRequest(r *http.Request, query string) (bool, string) {
 			target = query // fallback 
 		}
 
-		if strings.Contains(target, rule.Pattern) {
+		matched, err := regexp.MatchString(rule.Pattern, target)
+		if err != nil {
+			continue // skip bad regex instead of crashing
+		}
+
+		if matched {
 			return true, rule.Name
 		}
 	}

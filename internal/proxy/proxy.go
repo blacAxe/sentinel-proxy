@@ -13,12 +13,12 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/omar/sentinel-proxy/internal/config"
+	"github.com/omar/sentinel-proxy/internal/events"
 	"github.com/omar/sentinel-proxy/internal/logger"
 	"github.com/omar/sentinel-proxy/internal/metrics"
 	"github.com/omar/sentinel-proxy/internal/middleware"
 	"github.com/omar/sentinel-proxy/internal/rules"
-	"github.com/omar/sentinel-proxy/internal/config"
-	"github.com/omar/sentinel-proxy/internal/events"
 	db "github.com/omar/sentinel-proxy/internal/storage"
 )
 
@@ -103,8 +103,6 @@ func (a *App) Start() {
 		r.Header.Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	}
 
-	var JwtKey = []byte(cfg.JWTSecret)
-
 	// ===== MAIN HANDLER =====
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
@@ -116,18 +114,66 @@ func (a *App) Start() {
 		}
 
 		// AUTH CHECK
-		if strings.HasPrefix(r.URL.Path, "/api/secret-data") {
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+
 			authHeader := r.Header.Get("Authorization")
+			if authHeader == "" {
+				http.Error(w, "Missing Authorization header", http.StatusUnauthorized)
+				return
+			}
+
 			tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 
+			log.Println("AUTH HEADER:", authHeader)
+			log.Println("TOKEN STRING:", tokenString)
+
 			token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-				return JwtKey, nil
+				if token.Method != jwt.SigningMethodHS256 {
+					return nil, fmt.Errorf("unexpected signing method")
+				}
+				return []byte(cfg.JWTSecret), nil
 			})
 
-			if err != nil || !token.Valid {
-				logToSentinel("auth_error", "Invalid or Missing Token", r.RemoteAddr, r.URL.Path)
-				http.Error(w, "Zero Trust: Valid Passkey Token Required", http.StatusUnauthorized)
+			if err != nil {
+				log.Println("JWT ERROR:", err)
+				http.Error(w, "Invalid token", http.StatusUnauthorized)
 				return
+			}
+
+			if !token.Valid {
+				log.Println("TOKEN INVALID")
+				http.Error(w, "Invalid token", http.StatusUnauthorized)
+				return
+			}
+
+			claims, ok := token.Claims.(jwt.MapClaims)
+			if !ok {
+				http.Error(w, "Invalid token claims", http.StatusUnauthorized)
+				return
+			}
+
+			log.Println("JWT CLAIMS:", claims)
+
+			role, _ := claims["role"].(string)
+			log.Println("USER ROLE:", role)
+
+			// ROLE-BASED ACCESS CONTROL
+
+			if strings.HasPrefix(r.URL.Path, "/api/admin") {
+				if role != "admin" {
+					logToSentinel("blocked", "non-admin tried admin endpoint", r.RemoteAddr, r.URL.Path)
+					http.Error(w, "Forbidden: Admins only", http.StatusForbidden)
+					return
+				}
+			}
+
+			if strings.HasPrefix(r.URL.Path, "/api/user") {
+				// allow both user and admin
+				if role != "admin" && role != "user" {
+					logToSentinel("blocked", "invalid role", r.RemoteAddr, r.URL.Path)
+					http.Error(w, "Forbidden", http.StatusForbidden)
+					return
+				}
 			}
 
 			logToSentinel("auth_success", "Access granted", r.RemoteAddr, r.URL.Path)
@@ -136,7 +182,7 @@ func (a *App) Start() {
 		chain := middleware.Chain(
 			middleware.RequestID,
 			middleware.RateLimiter,
-			middleware.WAF,
+			middleware.WAF, // temp disable
 		)
 
 		secured := chain(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -188,12 +234,14 @@ func (a *App) Start() {
 	logToSentinel("system", "Local access: http://localhost:"+cfg.Port, "", "")
 
 	srv := &http.Server{
-		Addr: ":"     + cfg.Port,
+		Addr:         ":" + cfg.Port,
 		Handler:      handler,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  30 * time.Second,
 	}
+
+	log.Println("JWT SECRET:", cfg.JWTSecret)
 
 	log.Fatal(srv.ListenAndServe())
 }

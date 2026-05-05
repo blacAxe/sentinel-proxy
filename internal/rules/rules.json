@@ -1,8 +1,9 @@
 [
-  { "name": "SQLi UNION", "pattern": "union", "field": "query" },
-  { "name": "SQLi Comment", "pattern": "--", "field": "query" },
-  { "name": "SQLi OR 1=1", "pattern": "or1=1", "field": "query" },
-  { "name": "XSS Script", "pattern": "script", "field": "query" },
-  { "name": "XSS Event", "pattern": "onerror", "field": "query" },
-  { "name": "Admin Access", "pattern": "/admin", "field": "path" }
+  { "Name": "SQL Injection", "Pattern": "(?i)select", "Field": "query" },
+  { "Name": "SQLi UNION", "Pattern": "(?i)union", "Field": "query" },
+  { "Name": "SQLi Comment", "Pattern": "--", "Field": "query" },
+  { "Name": "SQLi OR 1=1", "Pattern": "(?i)or\\s*1=1", "Field": "query" },
+  { "Name": "XSS Script", "Pattern": "(?i)<script", "Field": "query" },
+  { "Name": "XSS Event", "Pattern": "(?i)onerror", "Field": "query" },
+  { "Name": "Admin Access", "Pattern": "/admin", "Field": "path" }
 ]
