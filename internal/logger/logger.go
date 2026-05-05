@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/omar/sentinel-proxy/internal/db"
+	"github.com/omar/sentinel-proxy/internal/storage"
 	"github.com/omar/sentinel-proxy/internal/events"
 )
 

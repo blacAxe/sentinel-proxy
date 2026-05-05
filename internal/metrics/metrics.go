@@ -3,6 +3,8 @@ package metrics
 import (
 	"sync"
 	"time"
+
+	"github.com/omar/sentinel-proxy/internal/events"
 )
 
 var mu sync.Mutex
@@ -128,4 +130,32 @@ func GetTimeline() map[int64]int {
 		copy[k] = v
 	}
 	return copy
+}
+
+func RecordEvent(e events.SecurityEvent) {
+	mu.Lock()
+	defer mu.Unlock()
+
+	// Core counters
+	Total++
+
+	if e.Action == "blocked" {
+		Blocked++
+	}
+
+	if e.Action == "allowed" {
+		Allowed++
+	}
+
+	// Analytics
+	if e.AttackType != "" {
+		attackCounts[e.AttackType]++
+	}
+
+	if e.IP != "" {
+		ipCounts[e.IP]++
+	}
+
+	now := time.Now().Unix()
+	requestTimeline[now]++
 }

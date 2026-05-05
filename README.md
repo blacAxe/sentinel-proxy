@@ -1,63 +1,119 @@
 # **Sentinel Go Security Proxy and Self Healer WAF**
 
+![CI](https://github.com/blacAxe/sentinel-proxy/actions/workflows/ci.yml/badge.svg)
+
 ## **Category**
+
 Security Engineering
 
-A lightweight security gateway built in Go to protect web applications. 
-It sits between the user and the backend and filters requests before they reach the server.
+Sentinel is a lightweight security gateway written in Go that sits in front of a backend service and inspects every request before it reaches the application.
+
+It started as a simple reverse proxy + WAF and has evolved into a small **identity-aware security layer** with logging, metrics, and real-time visibility into traffic and attacks.
+
+---
 
 ## **Architecture**
 
-* **Sentinel Proxy** in Go handles incoming traffic[cite: 8]
-* **Rule engine** inspects requests for malicious patterns[cite: 8]
-* **Zero Trust Middleware:** Validates JWT "Passkeys" from an Identity Provider (IdP)[cite: 8]
-* **LumenLog Bridge** exports security events to external pipelines[cite: 8]
-* **Target App** is a Node application running locally or on Render[cite: 8]
+Sentinel is built as a modular Go service with clear separation of concerns:
+
+* **Proxy Layer** — handles all incoming traffic and forwards it to the target service
+* **Middleware Chain** — request ID, rate limiting, and WAF inspection
+* **Rule Engine** — pattern-based detection for SQLi, XSS, and path abuse
+* **Event System** — every request generates a structured security event
+* **Metrics Layer** — aggregates traffic, attacks, IP activity, and timelines
+* **Dashboard (SSE)** — streams live logs and metrics to the UI
+* **Target App** — any backend (local or deployed)
+
+---
 
 ## **Core Features**
 
-* **Reverse proxy** built with native Go HTTP tools[cite: 8]
-* **Identity-Aware Protection:** Restricts sensitive routes (e.g., `/api/secret-data`) to authorized JWT holders only[cite: 8].
-* **Rule based detection** for SQL injection and XSS patterns[cite: 8]
-* **Rate limiting** per IP to prevent abuse[cite: 8]
-* **JSON-Powered Dashboard:** Real-time metrics and logs streamed via SSE in structured JSON format[cite: 8].
-* **Self healing** process monitor for local apps[cite: 8]
+* Reverse proxy built using Go’s `net/http` and `httputil`
+* Rule-based WAF detecting SQL injection, XSS, and suspicious paths
+* Per-IP rate limiting to reduce abuse and scanning
+* Identity-aware protection for sensitive routes using JWT validation
+* Real-time dashboard with:
 
-## **Latest Update: Zero Trust & Identity Integration**
+  * live request logs (SSE)
+  * traffic metrics (allowed vs blocked)
+  * attack breakdown and top IP tracking
+* Structured JSON event pipeline powering both logs and metrics
+* Timeout + failure handling for upstream services
+* Local persistence using SQLite
 
-Sentinel has evolved from a simple WAF to an Identity-Aware Proxy (IAP)[cite: 8].
+---
 
-* **IdP Integration:** Implemented JWT verification logic using secure signing keys to protect high-value API endpoints[cite: 8].
-* **Enhanced JSON Logging:** Refactored the internal logger to produce structured JSON, enabling the dashboard to parse and display attack data dynamically[cite: 8].
-* **LumenLog Bridge:** Every block or allow event is now serialized and shipped via HTTP to a central collector[cite: 8].
+## **Event & Processing Flow**
 
-## **Event Flow**
+Every request goes through a consistent pipeline:
 
-Sentinel now acts as a central event producer for the entire security stack:
+1. Request enters proxy
+2. Optional **JWT validation** for protected endpoints
+3. Middleware chain applies:
 
-1. Request comes in[cite: 8] 
-2. **Identity Check:** Middleware verifies JWT if the route is protected[cite: 8]
-3. Request is inspected by WAF and rate limiter[cite: 8]
-4. Structured event is created with unique ID[cite: 8]
-5. **Event is bridged to LumenLog Ingestor (Redpanda + ClickHouse)**[cite: 8]
+   * request ID
+   * rate limiting
+   * WAF inspection
+4. A structured `SecurityEvent` is created
+5. Event is:
 
-## **Example Output**
+   * streamed to the dashboard (logs)
+   * recorded into metrics (analytics)
+6. Request is either:
 
-ALLOW | IP: ::1 | Query: /dashboard[cite: 8]
+   * forwarded to upstream
+   * or blocked with a response
 
-BLOCKED | SQLi UNION | IP: ::1 | Query: ?id=1 union select[cite: 8]
+This keeps logging, metrics, and security decisions **fully consistent and centralized**.
 
-**[AUTH SUCCESS] Access granted to secure route**[cite: 8]
+---
+
+## **Example Events**
+
+```json
+{
+  "event_type": "security",
+  "ip": "::1",
+  "path": "/?id=1 union select",
+  "attack_detected": true,
+  "attack_type": "SQLi UNION",
+  "action": "blocked",
+  "timestamp": 1714880000
+}
+```
+
+---
 
 ## **How to Run**
 
-1. `go mod tidy`[cite: 8]
-2. `go run cmd/sentinel/main.go`[cite: 8]
-3. Open `http://localhost:8081/dashboard/`[cite: 8]
+```bash
+go mod tidy
+go run cmd/sentinel/main.go
+```
+
+Then open:
+
+http://localhost:8081/dashboard/
+
+---
 
 ## **Tech Stack**
 
-* **Go** (Net/HTTP, Reverse Proxy)[cite: 8]
-* **JWT-Go** (Token Verification)[cite: 8]
-* **SQLite** (Local Persistence)[cite: 8]
-* **Protobuf/JSON** (Event Serialization)[cite: 8]
+* Go (net/http, reverse proxy)
+* JWT (authentication / identity validation)
+* SQLite (local storage)
+* JSON (event pipeline + dashboard streaming)
+
+---
+
+## **Notes**
+
+This project focuses on building security systems from first principles:
+
+* understanding how traffic flows through a proxy
+* designing a simple WAF engine
+* structuring events for observability
+* handling failures and timeouts
+* keeping components loosely coupled
+
+It’s intentionally built without heavy frameworks to stay close to how real systems work under the hood.

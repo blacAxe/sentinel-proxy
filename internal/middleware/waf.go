@@ -17,7 +17,7 @@ import (
 func WAF(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
-		requestID := r.Context().Value(RequestIDKey).(string)
+		requestID, _ := r.Context().Value(RequestIDKey).(string)
 
 		w.Header().Set("X-Request-ID", requestID)
 
@@ -40,7 +40,7 @@ func WAF(next http.Handler) http.Handler {
 			return
 		}
 
-		blocked, reason := rules.IsMalicious(query)
+		blocked, reason := rules.EvaluateRequest(r, query)
 
 		if blocked {
 			event := events.SecurityEvent{
