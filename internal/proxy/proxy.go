@@ -24,11 +24,45 @@ import (
 
 type App struct{}
 
+type Client struct {
+	ch chan string
+}
+
+var clients = make(map[*Client]bool)
+var clientsMutex sync.Mutex
+
+// ring buffer (last 100 logs)
+var logBuffer []string
+var bufferSize = 100
+
 var (
 	reverseProxy *httputil.ReverseProxy
 	origin       *url.URL
 	targetMutex  sync.Mutex
 )
+
+func broadcast(msg string) {
+	clientsMutex.Lock()
+	defer clientsMutex.Unlock()
+
+	// ADDED: debug log
+	log.Println("[SSE] broadcasting:", msg)
+
+	// store in buffer
+	logBuffer = append(logBuffer, msg)
+	if len(logBuffer) > bufferSize {
+		logBuffer = logBuffer[1:]
+	}
+
+	// send to all clients
+	for c := range clients {
+		select {
+		case c.ch <- msg:
+		default:
+			// skip slow client (prevents blocking)
+		}
+	}
+}
 
 func logToSentinel(action string, attack string, ip string, path string) {
 	e := events.SecurityEvent{
@@ -43,11 +77,14 @@ func logToSentinel(action string, attack string, ip string, path string) {
 
 	data, _ := json.Marshal(e)
 
-	// send to logger
-	select {
-	case logger.LogChan <- string(data):
-	default:
-	}
+	// OLD (REMOVED — dead channel)
+	// select {
+	// case logger.LogChan <- string(data):
+	// default:
+	// }
+
+	// NEW (connects to SSE)
+	broadcast(string(data))
 
 	// update metrics
 	metrics.RecordEvent(e)
@@ -76,6 +113,14 @@ func (a *App) Start() {
 	}
 
 	reverseProxy = httputil.NewSingleHostReverseProxy(origin)
+
+	reverseProxy.ModifyResponse = func(resp *http.Response) error {
+		// Remove duplicate CORS headers from upstream
+		resp.Header.Del("Access-Control-Allow-Origin")
+		resp.Header.Del("Access-Control-Allow-Methods")
+		resp.Header.Del("Access-Control-Allow-Headers")
+		return nil
+	}
 
 	reverseProxy.Transport = &http.Transport{
 		ResponseHeaderTimeout: 5 * time.Second,
@@ -168,7 +213,6 @@ func (a *App) Start() {
 			}
 
 			if strings.HasPrefix(r.URL.Path, "/api/user") {
-				// allow both user and admin
 				if role != "admin" && role != "user" {
 					logToSentinel("blocked", "invalid role", r.RemoteAddr, r.URL.Path)
 					http.Error(w, "Forbidden", http.StatusForbidden)
@@ -182,7 +226,7 @@ func (a *App) Start() {
 		chain := middleware.Chain(
 			middleware.RequestID,
 			middleware.RateLimiter,
-			middleware.WAF, // temp disable
+			middleware.WAF,
 		)
 
 		secured := chain(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -203,9 +247,51 @@ func (a *App) Start() {
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
 
-		for msg := range logger.LogChan {
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
+			return
+		}
+
+		client := &Client{ch: make(chan string, 50)}
+
+		// register client
+		clientsMutex.Lock()
+		clients[client] = true
+		clientsMutex.Unlock()
+
+		// ADDED
+		log.Println("[SSE] client connected")
+
+		// send buffer (replay)
+		for _, msg := range logBuffer {
 			fmt.Fprintf(w, "data: %s\n\n", msg)
-			w.(http.Flusher).Flush()
+		}
+		flusher.Flush()
+
+		notify := r.Context().Done()
+
+		ticker := time.NewTicker(15 * time.Second)
+		defer ticker.Stop() // ✅ ADDED (prevents leak)
+
+		for {
+			select {
+			case msg := <-client.ch:
+				fmt.Fprintf(w, "data: %s\n\n", msg)
+				flusher.Flush()
+
+			case <-ticker.C:
+				fmt.Fprintf(w, ": heartbeat\n\n")
+				flusher.Flush()
+
+			case <-notify:
+				log.Println("[SSE] client disconnected")
+
+				clientsMutex.Lock()
+				delete(clients, client)
+				clientsMutex.Unlock()
+				return
+			}
 		}
 	})
 
@@ -233,9 +319,11 @@ func (a *App) Start() {
 	logToSentinel("system", "Sentinel Proxy is shielding: "+cfg.Target, "", "")
 	logToSentinel("system", "Local access: http://localhost:"+cfg.Port, "", "")
 
+	wrappedHandler := middleware.CORS(handler)
+
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
-		Handler:      handler,
+		Handler:      wrappedHandler,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  30 * time.Second,

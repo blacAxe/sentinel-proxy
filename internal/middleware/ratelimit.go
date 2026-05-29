@@ -20,6 +20,7 @@ var clients = make(map[string]*Client)
 func RateLimiter(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
+		// skip internal routes
 		if strings.HasPrefix(r.URL.Path, "/stats") ||
 			strings.HasPrefix(r.URL.Path, "/logs") ||
 			strings.HasPrefix(r.URL.Path, "/dashboard") {
@@ -40,6 +41,7 @@ func RateLimiter(next http.Handler) http.Handler {
 			clients[ip] = client
 		}
 
+		// 10 second sliding window (more realistic)
 		var valid []int64
 		for _, t := range client.Requests {
 			if now-t < 10 {
@@ -49,8 +51,9 @@ func RateLimiter(next http.Handler) http.Handler {
 
 		client.Requests = append(valid, now)
 
-		if len(client.Requests) > 10 {
-			requestID := r.Context().Value(RequestIDKey).(string)
+		// allow bursts, block abuse
+		if len(client.Requests) > 15 {
+			requestID, _ := r.Context().Value(RequestIDKey).(string)
 
 			event := events.SecurityEvent{
 				EventType:      "rate_limited",
@@ -73,6 +76,9 @@ func RateLimiter(next http.Handler) http.Handler {
 			http.Error(w, "Too many requests", http.StatusTooManyRequests)
 			return
 		}
+
+		// count allowed requests too (for metrics realism)
+		metrics.IncAllowed()
 
 		next.ServeHTTP(w, r)
 	})

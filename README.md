@@ -1,18 +1,39 @@
-# **Sentinel Go Security Proxy and Self Healer WAF**
+# Sentinel Security Proxy
 
 ![CI](https://github.com/blacAxe/sentinel-proxy/actions/workflows/ci.yml/badge.svg)
 
-## **Category**
+## Category
 
-Security Engineering
+Sentinel is a lightweight security proxy written in Go that sits in front of backend services and inspects incoming traffic before it reaches the application.
 
-Sentinel is a lightweight security gateway written in Go that sits in front of a backend service and inspects every request before it reaches the application.
+It started as a reverse proxy and WAF experiment, then evolved into an identity-aware security layer with request inspection, JWT validation, rate limiting, structured events, metrics, and real-time dashboard visibility.
 
-It started as a simple reverse proxy + WAF and has evolved into a small **identity-aware security layer** with logging, metrics, and real-time visibility into traffic and attacks.
+This service is not just a reverse proxy — it is where identity becomes enforcement:
+
+* JWTs issued by the Identity Provider are validated here
+* access control decisions are made in real time
+* malicious or suspicious traffic is blocked before it reaches the backend
+
+It acts as the gatekeeper of the system.
 
 ---
 
-## **Architecture**
+## Architecture
+
+```text
+Client Request
+      │
+      ▼
+Sentinel Proxy
+      │
+      ├── Request ID Middleware
+      ├── JWT Identity Middleware
+      ├── Rate Limiter
+      ├── WAF Rule Engine
+      └── Reverse Proxy
+              │
+              ▼
+        Backend Service
 
 Sentinel is built as a modular Go service with clear separation of concerns:
 
@@ -26,7 +47,24 @@ Sentinel is built as a modular Go service with clear separation of concerns:
 
 ---
 
-## **Core Features**
+## Role in the Platform
+
+Sentinel Proxy is responsible for enforcing all security decisions.
+
+It receives requests that already include identity (JWTs from the IdP) and applies:
+
+* authentication validation
+* role-based access control
+* WAF inspection
+* rate limiting
+
+Unlike the Identity Provider, which creates identity, this service enforces it.
+
+This separation allows the system to scale and evolve without coupling authentication logic to request handling.
+
+---
+
+## Core Features
 
 * Reverse proxy built using Go’s `net/http` and `httputil`
 * Rule-based WAF detecting SQL injection, XSS, and suspicious paths
@@ -40,10 +78,11 @@ Sentinel is built as a modular Go service with clear separation of concerns:
 * Structured JSON event pipeline powering both logs and metrics
 * Timeout + failure handling for upstream services
 * Local persistence using SQLite
+* Live streaming logs via Server-Sent Events (SSE) powering the Sentinel OS dashboard
 
 ---
 
-## **Event & Processing Flow**
+## Event & Processing Flow
 
 Every request goes through a consistent pipeline:
 
@@ -68,7 +107,21 @@ This keeps logging, metrics, and security decisions **fully consistent and centr
 
 ---
 
-## **Example Events**
+## Real-Time Visibility
+
+All security events are streamed live to the frontend dashboard using Server-Sent Events.
+
+This enables:
+
+* live request logs
+* immediate visibility into attacks
+* real-time feedback on allowed vs blocked traffic
+
+The dashboard is not simulated — it reflects actual request flow through the proxy.
+
+---
+
+## Example Events
 
 ```json
 {
@@ -84,7 +137,7 @@ This keeps logging, metrics, and security decisions **fully consistent and centr
 
 ---
 
-## **How to Run**
+## How to Run
 
 ```bash
 go mod tidy
@@ -97,7 +150,7 @@ http://localhost:8081/dashboard/
 
 ---
 
-## **Tech Stack**
+## Tech Stack
 
 * Go (net/http, reverse proxy)
 * JWT (authentication / identity validation)
@@ -106,7 +159,7 @@ http://localhost:8081/dashboard/
 
 ---
 
-## **Notes**
+## Notes
 
 This project focuses on building security systems from first principles:
 
@@ -117,3 +170,16 @@ This project focuses on building security systems from first principles:
 * keeping components loosely coupled
 
 It’s intentionally built without heavy frameworks to stay close to how real systems work under the hood.
+
+---
+
+## What This Demonstrates
+
+- Reverse proxy design in Go
+- Middleware-based request processing
+- WAF rule evaluation
+- JWT-aware request validation
+- Rate limiting and abuse prevention
+- Structured security event generation
+- Real-time observability through logs and metrics
+- Backend security engineering from first principles
