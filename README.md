@@ -34,6 +34,7 @@ Sentinel Proxy
               │
               ▼
         Backend Service
+```
 
 Sentinel is built as a modular Go service with clear separation of concerns:
 
