@@ -4,6 +4,9 @@
 
 ## Category
 
+Security Engineering
+
+
 Sentinel is a lightweight security proxy written in Go that sits in front of backend services and inspects incoming traffic before it reaches the application.
 
 It started as a reverse proxy and WAF experiment, then evolved into an identity-aware security layer with request inspection, JWT validation, rate limiting, structured events, metrics, and real-time dashboard visibility.
